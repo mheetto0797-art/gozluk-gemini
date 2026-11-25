@@ -139,6 +139,12 @@ class MainActivity : ComponentActivity() {
             Wearables.startRegistration(this)
         })
         root.addView(button("2) Kamerayı başlat") { saveSettings(); checkPermissionAndStart() })
+        root.addView(button("Gözlükteki uygulama bağlantısını güncelle") {
+            lifecycleScope.launch { Wearables.openDATGlassesAppUpdate(this@MainActivity) }
+        })
+        root.addView(button("Gözlük yazılımını güncelle") {
+            lifecycleScope.launch { Wearables.openFirmwareUpdate(this@MainActivity) }
+        })
         liveButton = button("▶ Canlı anlatımı başlat") { toggleLive() }
         root.addView(liveButton)
         root.addView(button("🎤 Soru sor") {
@@ -190,7 +196,18 @@ class MainActivity : ComponentActivity() {
             onSuccess = { s ->
                 session = s
                 lifecycleScope.launch {
-                    s.errors.collect { e -> setStatus("Bağlantı hatası: ${e.description}") }
+                    s.errors.collect { e ->
+                        val needsUpdate = e.toString().contains("UPDATE", ignoreCase = true) ||
+                            e.description.contains("update", ignoreCase = true)
+                        if (needsUpdate) {
+                            setStatus("Gözlükteki uygulama bağlantısının güncellenmesi gerekiyor. " +
+                                "Meta AI'da güncelleme sayfası açılıyor; güncelleme bitince 2) Kamerayı başlat'a tekrar bas.")
+                            session?.stop(); session = null
+                            lifecycleScope.launch { Wearables.openDATGlassesAppUpdate(this@MainActivity) }
+                        } else {
+                            setStatus("Bağlantı hatası: ${e.description}")
+                        }
+                    }
                 }
                 lifecycleScope.launch {
                     s.state.collect { st ->
