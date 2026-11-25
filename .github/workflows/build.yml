@@ -1,0 +1,70 @@
+name: APK derle
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Projeyi çıkar (project.zip varsa)
+        run: |
+          if [ -f project.zip ]; then
+            unzip -o -q project.zip -d ziptmp
+            cp -r ziptmp/GozlukGemini/. .
+            rm -rf ziptmp
+          fi
+          ls -la
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Meta SDK API dökümü (hata ayıklama için)
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/sdk && cd /tmp/sdk
+          for a in mwdat-core mwdat-camera; do
+            curl -sSL -o $a.aar https://repo1.maven.org/maven2/com/meta/wearable/$a/1.0.1/$a-1.0.1.aar
+            mkdir -p $a && unzip -o -q $a.aar -d $a
+            mkdir -p $a/cls && unzip -o -q $a/classes.jar -d $a/cls
+          done
+          echo "===== SINIFLAR ====="
+          find . -path '*/cls/com/meta/wearable/*.class' | grep -v '\$' | sed 's|.*/cls/||' | sort
+          echo "===== IMZALAR ====="
+          for f in $(find . -path '*/cls/com/meta/wearable/*.class' | grep -v '\$' | grep -Ei 'Wearables|Permission|Session|Selector|Camera|Stream|VideoFrame|DatResult|Registration|Photo' | sort); do
+            javap -public "$f" 2>/dev/null | head -60
+          done
+
+      - name: APK derle
+        run: gradle --no-daemon assembleDebug
+
+      - name: APK'yı adlandır
+        run: cp app/build/outputs/apk/debug/app-debug.apk GozlukGemini.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GozlukGemini-apk
+          path: GozlukGemini.apk
+
+      - name: Release yayınla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Gözlük Gemini v1.0.${{ github.run_number }}
+          make_latest: true
+          files: GozlukGemini.apk
+          body: |
+            Telefona kurmak için GozlukGemini.apk dosyasını indir.
+            Sabit indirme bağlantısı: https://github.com/${{ github.repository }}/releases/latest/download/GozlukGemini.apk
